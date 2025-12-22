@@ -1,14 +1,16 @@
 -- =========================================================
--- init.lua：入口文件
---
--- 原则：
--- 1) 先加载基础设置（options.lua）：不依赖任何插件，启动必然生效
--- 2) 再加载插件系统（plugins.lua）：bootstrap lazy.nvim 并加载 specs/*
---
--- 这样做的好处：
--- - 即使插件没装/坏了，基础设置仍然有效（不会“全挂”）
--- - 插件配置集中在 specs/ 目录，易维护
+-- init.lua：入口（只做三件事）
+-- 1) 设置 leader
+-- 2) 加载基础选项 options
+-- 3) 启动 lazy + 插件 specs
 -- =========================================================
+
+vim.g.mapleader = ","
+vim.g.maplocalleader = ","
+
+-- 可选：加速 Lua 模块加载（Nvim 0.9+）
+pcall(function() vim.loader.enable() end)
 
 require("options")
 require("plugins")
+

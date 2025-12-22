@@ -1,121 +1,104 @@
 -- =========================================================
--- specs/treesitter.lua  (Neovim 0.11 + nvim-treesitter main)
+-- treesitter.lua（Neovim 0.11 + nvim-treesitter main 新 API）
 --
--- 你现在用的是 nvim-treesitter 的 main 分支“新 API”风格：
--- - 高亮：vim.treesitter.start(buf, lang)
--- - 折叠：vim.treesitter.foldexpr()
--- - 缩进：require("nvim-treesitter").indentexpr()
--- - 安装 parser：require("nvim-treesitter").install(...)
+-- 你当前环境已经在用 main 新 API（install / indentexpr / 手动 start）
+-- 所以这里按“新 API”写，并把逻辑理清：
 --
--- 设计目标：
--- 1) treesitter 插件常驻（lazy=false），避免“功能随机不生效”
--- 2) 打开文件时自动启用：高亮 + 缩进 +（可选）折叠
--- 3) 折叠默认“可用但不自动折起来”（foldlevel=99）
+-- 目标：
+-- 1) 打开文件后自动启用高亮（vim.treesitter.start）
+-- 2) 默认不自动折叠（foldlevel=99），但折叠功能可用（zo/zc/zR/zM）
+-- 3) 缩进可选启用（indentexpr），不满意就注释掉那一行
+-- 4) 首次打开某语言文件，尝试补装 parser（最多等 2 秒，不折磨启动）
+--
+-- 注意：
+-- - foldlevelstart 是“全局选项”，不能用 vim.wo 设置，只能 vim.o / vim.opt
+-- - foldmethod / foldexpr / foldlevel 是“窗口选项”（vim.wo）
 -- =========================================================
 
 return {
-	{
-		"nvim-treesitter/nvim-treesitter",
-		lazy = false, -- main 分支不建议 lazy-loading
-		build = ":TSUpdate", -- 更新插件后同步更新 parsers
+    {
+        "nvim-treesitter/nvim-treesitter",
+        lazy = false,
+        build = ":TSUpdate",
+        config = function()
+            local ts = require("nvim-treesitter")
 
-		config = function()
-			local ts = require("nvim-treesitter")
+            -- A) treesitter parser 安装目录
+            ts.setup({
+                install_dir = vim.fn.stdpath("data") .. "/site",
+            })
 
-			-- -----------------------------------------------------
-			-- A) 基础设置：安装目录
-			-- -----------------------------------------------------
-			ts.setup({
-				install_dir = vim.fn.stdpath("data") .. "/site",
-			})
+            -- B) 预装常用 parser（异步，不等待）
+            ts.install({
+                "lua",
+                "vim",
+                "vimdoc",
+                "query",
+                "python",
+                "c",
+                "cpp",
+                "javascript",
+                "typescript",
+                "bash",
+                "cmake",
+                "json",
+                "yaml",
+                "markdown",
+                "markdown_inline",
+                "html",
+                "css",
+            }, { summary = false })
 
-			-- -----------------------------------------------------
-			-- B) 预装一批常用 parser（等价旧版 ensure_installed 的“开机预热”）
-			--    注意：这是异步任务，不 wait，避免启动卡顿。
-			-- -----------------------------------------------------
-			ts.install({
-				"lua",
-				"vim",
-				"vimdoc",
-				"query",
-				"python",
-				"c",
-				"cpp",
-				"javascript",
-				"typescript",
-				"bash",
-				"cmake",
-				"json",
-				"yaml",
-				"markdown",
-				"markdown_inline",
-				"html",
-				"css",
-			}, { summary = false })
+            -- C) 全局：默认不自动折叠
+            vim.opt.foldlevelstart = 99
 
-			-- -----------------------------------------------------
-			-- C) 折叠的“全局默认行为”
-			--    foldlevelstart 是 global option（必须用 vim.o / vim.opt）
-			--    设为 99 => 默认不自动折叠（但你仍可用 zM/zR/zo/zc）
-			-- -----------------------------------------------------
-			vim.opt.foldlevelstart = 99
+            -- D) FileType：对普通文件 buffer 启用 treesitter 功能
+            local grp = vim.api.nvim_create_augroup("TSMainEnable", { clear = true })
 
-			-- -----------------------------------------------------
-			-- D) FileType：打开文件时启用功能
-			-- -----------------------------------------------------
-			local grp = vim.api.nvim_create_augroup("TSMainBranchEnable", { clear = true })
+            vim.api.nvim_create_autocmd("FileType", {
+                group = grp,
+                pattern = "*",
+                callback = function(ev)
+                    local buf = ev.buf
 
-			vim.api.nvim_create_autocmd("FileType", {
-				group = grp,
-				pattern = "*",
-				callback = function(ev)
-					local buf = ev.buf
-					local ft = vim.bo[buf].filetype
-					if not ft or ft == "" then
-						return
-					end
+                    -- 跳过特殊 buffer（lazy/mason/help/terminal 等）
+                    if vim.bo[buf].buftype ~= "" then
+                        return
+                    end
 
-					-- filetype -> treesitter language 映射（例如：typescriptreact 等）
-					local lang = vim.treesitter.language.get_lang(ft) or ft
-					if not lang or lang == "" then
-						return
-					end
+                    local ft = vim.bo[buf].filetype
+                    if not ft or ft == "" then
+                        return
+                    end
 
-					-- -------------------------------------------------
-					-- D-1) 兜底安装 parser
-					-- 说明：
-					-- - 首次打开某语言文件时，如果没装 parser，会尝试装一下
-					-- - 为了不“卡死”，只等一小会儿（2s），超时就算了
-					-- -------------------------------------------------
-					do
-						local ok, task = pcall(ts.install, { lang }, { summary = false })
-						if ok and task and task.wait then
-							pcall(task.wait, task, 2000) -- 最多等 2 秒：够用且不折磨
-						end
-					end
+                    -- filetype -> treesitter language（例如 typescriptreact）
+                    local lang = vim.treesitter.language.get_lang(ft) or ft
+                    if not lang or lang == "" then
+                        return
+                    end
 
-					-- -------------------------------------------------
-					-- D-2) 启用高亮（buffer-local）
-					-- -------------------------------------------------
-					pcall(vim.treesitter.start, buf, lang)
+                    -- D1) 兜底安装 parser（最多等 2 秒）
+                    do
+                        local ok, task = pcall(ts.install, { lang }, { summary = false })
+                        if ok and task and task.wait then
+                            pcall(task.wait, task, 2000)
+                        end
+                    end
 
-					-- -------------------------------------------------
-					-- D-3) 启用缩进（buffer-local）
-					-- 注意：treesitter indent 仍偏“实验性”，不满意可以关掉这行
-					-- -------------------------------------------------
-					vim.bo[buf].indentexpr = "v:lua.require'nvim-treesitter'.indentexpr()"
+                    -- D2) 启用高亮（buffer-local）
+                    pcall(vim.treesitter.start, buf, lang)
 
-					-- -------------------------------------------------
-					-- D-4) 启用折叠（window-local）
-					-- 你之前“代码自动折起来”，就是 foldlevel 太低导致。
-					-- 这里把 foldlevel 拉到 99 => 默认全展开。
-					-- -------------------------------------------------
-					vim.wo.foldmethod = "expr"
-					vim.wo.foldexpr = "v:lua.vim.treesitter.foldexpr()"
-					vim.wo.foldenable = true
-					vim.wo.foldlevel = 99
-				end,
-			})
-		end,
-	},
+                    -- D3) 启用缩进（buffer-local，可选）
+                    -- 不喜欢 treesitter 缩进就把下一行注释掉
+                    vim.bo[buf].indentexpr = "v:lua.require'nvim-treesitter'.indentexpr()"
+
+                    -- D4) 启用折叠（window-local），但默认全展开
+                    vim.wo.foldmethod = "expr"
+                    vim.wo.foldexpr = "v:lua.vim.treesitter.foldexpr()"
+                    vim.wo.foldenable = true
+                    vim.wo.foldlevel = 99
+                end,
+            })
+        end,
+    },
 }

@@ -1,107 +1,273 @@
 -- =========================================================
--- format.lua：统一格式化 + lint
+-- format.lua：conform(格式化) + nvim-lint(静态检查)
 --
--- 键位（避免占用 <leader>f 组，<leader>f* 全留给 search.lua 的 telescope）：
--- - <leader>lf  格式化（优先 conform；没有 formatter 就 fallback 到 LSP）
--- - <leader>lF  强制格式化（并提示）
--- - <leader>ll  触发 lint
+-- 目标（你的要求）：
+-- 1) 外部命令不存在 => 不执行、不报错
+-- 2) 保存时可以“改缩进/格式化”，但最终写入文件时：
+--    - 缩进区（行首空白）必须是空格
+--    - 不要 Tab（至少不要缩进 Tab）
 --
--- 注意：
--- - formatter/linter 需要系统里装好对应命令：
---   stylua / ruff / black / prettier / shfmt / eslint_d / shellcheck 等
+-- 做法：
+-- - 不用 conform 内置 format_on_save（我们自己写 BufWritePre，保证顺序：format -> 去 Tab）
+-- - BufWritePre：
+--     conform.format(sync) -> 把行首 \t 展开成空格
+--
+-- 参考：conform 官方 README 的 BufWritePre 用法、format_on_save、formatters(prepend_args) 说明
+-- =========================================================
+-- :contentReference[oaicite:0]{index=0}
 -- =========================================================
 
+local function has(cmd)
+    return vim.fn.executable(cmd) == 1
+end
+
+-- 只把“行首缩进区域”的 Tab 展开成空格（不动正文里的 tab）
+local function expand_indent_tabs_to_spaces(bufnr)
+    bufnr = bufnr or 0
+
+    -- 尊重 buffer 自己的设置：如果这个 buffer 就是 noexpandtab（例如 make），直接跳过
+    if not vim.bo[bufnr].expandtab then
+        return
+    end
+
+    local ft = vim.bo[bufnr].filetype
+    if ft == "make" then
+        return
+    end
+
+    -- 用 tabstop 来计算“tab 展开后的对齐列”
+    local ts = vim.bo[bufnr].tabstop
+    if ts <= 0 then
+        ts = 8
+    end
+
+    local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+    local changed = false
+
+    for i, line in ipairs(lines) do
+        -- 提取行首空白（tabs/spaces）
+        local prefix = line:match("^[\t ]+")
+        if prefix and prefix:find("\t", 1, true) then
+            local col = 0
+            local out = {}
+
+            for j = 1, #prefix do
+                local ch = prefix:sub(j, j)
+                if ch == "\t" then
+                    local n = ts - (col % ts)
+                    out[#out + 1] = string.rep(" ", n)
+                    col = col + n
+                else
+                    out[#out + 1] = " "
+                    col = col + 1
+                end
+            end
+
+            lines[i] = table.concat(out) .. line:sub(#prefix + 1)
+            changed = true
+        end
+    end
+
+    if changed then
+        vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, lines)
+    end
+end
+
 return {
-	-- ========== 格式化：conform.nvim ==========
-	{
-		"stevearc/conform.nvim",
-		event = "VeryLazy",
+    -- =========================================================
+    -- conform：格式化
+    -- =========================================================
+    {
+        "stevearc/conform.nvim",
+        event = { "BufReadPre", "BufNewFile" },
 
-		keys = {
-			{
-				"<leader>lf",
-				function()
-					local ok, conform = pcall(require, "conform")
-					if ok then
-						conform.format({ async = true, lsp_fallback = true })
-					else
-						vim.lsp.buf.format({ async = true })
-					end
-				end,
-				desc = "LSP: Format (Conform/LSP)",
-			},
-			{
-				"<leader>lF",
-				function()
-					local ok, conform = pcall(require, "conform")
-					if ok then
-						conform.format({ async = true, lsp_fallback = true, timeout_ms = 5000 })
-						vim.notify("Formatted", vim.log.levels.INFO)
-					else
-						vim.lsp.buf.format({ async = true })
-						vim.notify("Formatted (LSP)", vim.log.levels.INFO)
-					end
-				end,
-				desc = "LSP: Format (force)",
-			},
-		},
+        keys = {
+            {
+                "<leader>f",
+                function()
+                    local ok, conform = pcall(require, "conform")
+                    if ok then
+                        conform.format({ async = true, lsp_format = "fallback" })
+                    else
+                        vim.lsp.buf.format({ async = true })
+                    end
+                end,
+                desc = "Format (Conform/LSP)",
+            },
+            {
+                "<leader>F",
+                function()
+                    local ok, conform = pcall(require, "conform")
+                    if ok then
+                        conform.format({ async = true, lsp_format = "fallback", timeout_ms = 5000 })
+                    else
+                        vim.lsp.buf.format({ async = true })
+                    end
+                end,
+                desc = "Format (force)",
+            },
+        },
 
-		opts = {
-			formatters_by_ft = {
-				lua = { "stylua" },
-				python = { "ruff_format", "black" },
-				javascript = { "prettier" },
-				typescript = { "prettier" },
-				json = { "prettier" },
-				yaml = { "prettier" },
-				markdown = { "prettier" },
-				sh = { "shfmt" },
-			},
+        opts = {
+            notify_on_error = false,
+            notify_no_formatters = false,
 
-			format_on_save = function()
-				return { lsp_fallback = true, timeout_ms = 2000 }
-			end,
-		},
-	},
+            -- 按“命令是否存在”动态选择 formatter
+            formatters_by_ft = {
+                lua = function()
+                    return has("stylua") and { "stylua" } or {}
+                end,
 
-	-- ========== Lint：nvim-lint ==========
-	{
-		"mfussenegger/nvim-lint",
-		event = "VeryLazy",
+                python = function()
+                    if has("ruff") then
+                        return { "ruff_format" }
+                    end
+                    return has("black") and { "black" } or {}
+                end,
 
-		keys = {
-			{
-				"<leader>ll",
-				function()
-					local ok, lint = pcall(require, "lint")
-					if ok then
-						lint.try_lint()
-					end
-				end,
-				desc = "LSP: Lint",
-			},
-		},
+                javascript = function()
+                    return has("prettier") and { "prettier" } or {}
+                end,
+                typescript = function()
+                    return has("prettier") and { "prettier" } or {}
+                end,
+                json = function()
+                    return has("prettier") and { "prettier" } or {}
+                end,
+                yaml = function()
+                    return has("prettier") and { "prettier" } or {}
+                end,
+                markdown = function()
+                    return has("prettier") and { "prettier" } or {}
+                end,
 
-		config = function()
-			local lint = require("lint")
+                sh = function()
+                    return has("shfmt") and { "shfmt" } or {}
+                end,
+            },
 
-			lint.linters_by_ft = {
-				python = { "ruff" },
-				javascript = { "eslint_d" },
-				typescript = { "eslint_d" },
-				sh = { "shellcheck" },
-			}
+            -- 覆盖/追加 formatter 参数：prepend_args/append_args
+            -- :contentReference[oaicite:1]{index=1}
+            formatters = {
+                -- 尽量让 shfmt 走“空格缩进”的风格（随后我们还会在保存前兜底清 Tab）
+                shfmt = {
+                    prepend_args = { "-i", "4" },
+                },
+            },
+        },
 
-			local grp = vim.api.nvim_create_augroup("LintOnEvents", { clear = true })
-			vim.api.nvim_create_autocmd({ "BufEnter", "BufWritePost", "InsertLeave" }, {
-				group = grp,
-				callback = function()
-					if vim.bo.buftype ~= "" then
-						return
-					end
-					pcall(lint.try_lint)
-				end,
-			})
-		end,
-	},
+        config = function(_, opts)
+            require("conform").setup(opts)
+
+            -- 我们自己做“保存前格式化”，保证顺序：format -> 去缩进 Tab
+            -- conform README 推荐的 BufWritePre 方式：
+            -- :contentReference[oaicite:2]{index=2}
+            local grp = vim.api.nvim_create_augroup("ConformFormatThenDetab", { clear = true })
+            vim.api.nvim_create_autocmd("BufWritePre", {
+                group = grp,
+                pattern = "*",
+                callback = function(args)
+                    local bufnr = args.buf
+
+                    -- 跳过特殊 buffer
+                    if vim.bo[bufnr].buftype ~= "" then
+                        return
+                    end
+
+                    -- 先格式化（同步，避免保存后才改动）
+                    local ok, conform = pcall(require, "conform")
+                    if ok then
+                        -- quiet=true：没有 formatter 的时候别吵；lsp_format=fallback：没 formatter 就用 LSP
+                        conform.format({
+                            bufnr = bufnr,
+                            async = false,
+                            timeout_ms = 2000,
+                            lsp_format = "fallback",
+                            quiet = true,
+                        })
+                    else
+                        -- 极端兜底
+                        pcall(vim.lsp.buf.format, { bufnr = bufnr, async = false })
+                    end
+
+                    -- 再把“缩进区 Tab”清成空格（最终落盘不会留下缩进 Tab）
+                    expand_indent_tabs_to_spaces(bufnr)
+                end,
+            })
+        end,
+    },
+
+    -- =========================================================
+    -- nvim-lint：lint（外部命令不存在就不启用）
+    -- =========================================================
+    {
+        "mfussenegger/nvim-lint",
+        event = { "BufReadPost", "BufNewFile" },
+
+        keys = {
+            {
+                "<leader>l",
+                function()
+                    local ok, lint = pcall(require, "lint")
+                    if ok then
+                        pcall(lint.try_lint)
+                    end
+                end,
+                desc = "Lint",
+            },
+        },
+
+        config = function()
+            local lint = require("lint")
+
+            -- 直接重置，避免残留旧配置导致 ENOENT
+            lint.linters_by_ft = {}
+
+            local by_ft = {}
+
+            if has("ruff") then
+                by_ft.python = { "ruff" }
+            end
+
+            if has("eslint_d") then
+                by_ft.javascript = { "eslint_d" }
+                by_ft.typescript = { "eslint_d" }
+            elseif has("eslint") then
+                by_ft.javascript = { "eslint" }
+                by_ft.typescript = { "eslint" }
+            end
+
+            if has("shellcheck") then
+                by_ft.sh = { "shellcheck" }
+            end
+
+            lint.linters_by_ft = by_ft
+
+            local grp = vim.api.nvim_create_augroup("LintOnEvents", { clear = true })
+            vim.api.nvim_create_autocmd({ "BufEnter", "BufWritePost", "InsertLeave" }, {
+                group = grp,
+                callback = function()
+                    if vim.bo.buftype ~= "" then
+                        return
+                    end
+                    local ft = vim.bo.filetype
+                    local linters = lint.linters_by_ft[ft]
+                    if not linters or #linters == 0 then
+                        return
+                    end
+
+                    -- 再兜底一层：PATH 变了也别炸
+                    for _, name in ipairs(linters) do
+                        local l = lint.linters[name]
+                        local cmd = l and l.cmd
+                        if type(cmd) == "string" and not has(cmd) then
+                            return
+                        end
+                    end
+
+                    pcall(lint.try_lint)
+                end,
+            })
+        end,
+    },
 }
