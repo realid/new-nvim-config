@@ -16,12 +16,14 @@ local lazypath = vim.fn.stdpath("data") .. "/lazy/lazy.nvim"
 
 -- 如果 lazy.nvim 不存在，就自动 git clone 一份
 if not (vim.uv or vim.loop).fs_stat(lazypath) then
-    vim.fn.system({
-        "git", "clone", "--filter=blob:none",
-        "https://github.com/folke/lazy.nvim.git",
-        "--branch=stable",
-        lazypath,
-    })
+	vim.fn.system({
+		"git",
+		"clone",
+		"--filter=blob:none",
+		"https://github.com/folke/lazy.nvim.git",
+		"--branch=stable",
+		lazypath,
+	})
 end
 
 -- 把 lazy.nvim 加入 runtimepath
@@ -29,9 +31,8 @@ vim.opt.rtp:prepend(lazypath)
 
 -- setup：把 specs 目录作为插件清单入口
 require("lazy").setup({
-    { import = "specs" },
+	{ import = "specs" },
 }, {
-    install = { missing = true }, -- 缺插件自动装
-    checker = { enabled = true }, -- 自动检查更新
+	install = { missing = true }, -- 缺插件自动装
+	checker = { enabled = false }, -- 自动检查更新
 })
-
