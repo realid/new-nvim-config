@@ -3,12 +3,18 @@
 -- =========================================================
 
 return {
+    -- plenary.nvim：Telescope 等插件的公共工具库
     { "nvim-lua/plenary.nvim", lazy = true },
 
     {
         "nvim-telescope/telescope.nvim",
+        -- telescope.nvim：模糊查找/内容搜索等入口
         cmd = "Telescope",
-        dependencies = { "nvim-lua/plenary.nvim" },
+        dependencies = {
+            -- plenary.nvim：Telescope 依赖的 Lua 工具库
+            "nvim-lua/plenary.nvim",
+        },
+        -- 常用查找快捷键
         keys = {
             {
                 "<leader>ff",
@@ -48,20 +54,24 @@ return {
         },
         opts = {
             defaults = {
-                border = true,
-                sorting_strategy = "ascending",
-                layout_config = { prompt_position = "top" },
+                border = true, -- 使用边框分隔
+                sorting_strategy = "ascending", -- 结果从上到下
+                layout_config = { prompt_position = "top" }, -- 提示框置顶
             },
         },
     },
 
+    -- 原生 fzf 扩展（需要 make 编译），用于提升搜索性能。
     {
         "nvim-telescope/telescope-fzf-native.nvim",
         build = "make",
         cond = function()
             return vim.fn.executable("make") == 1
         end,
-        dependencies = { "nvim-telescope/telescope.nvim" },
+        dependencies = {
+            -- telescope.nvim：提供核心查找能力
+            "nvim-telescope/telescope.nvim",
+        },
         config = function()
             pcall(require("telescope").load_extension, "fzf")
         end,
