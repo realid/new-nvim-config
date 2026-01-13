@@ -44,7 +44,6 @@ return {
                 local map = vim.keymap.set
                 local o = { noremap = true, silent = true, buffer = bufnr }
 
-<<<<<<< HEAD
                 -- 光标停留时自动弹出诊断浮窗
                 local diag_group = vim.api.nvim_create_augroup("LspDiagnosticsOnHover", { clear = false })
                 vim.api.nvim_clear_autocmds({ group = diag_group, buffer = bufnr })
@@ -56,10 +55,7 @@ return {
                     end,
                 })
 
-                -- 跳转/查看
-=======
                 -- 跳转/查看：仅在 LSP attach 后生效。
->>>>>>> 258c1ec0e1d33d0ed380eaf42b775c59cbaac4ff
                 map("n", "gd", vim.lsp.buf.definition, o)
                 map("n", "gD", vim.lsp.buf.declaration, o)
                 map("n", "gi", vim.lsp.buf.implementation, o)
