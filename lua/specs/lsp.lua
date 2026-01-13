@@ -4,26 +4,29 @@
 -- =========================================================
 
 return {
-    -- nvim-lspconfig：提供 server 定义 + :LspInfo 命令
+    -- nvim-lspconfig：提供 LSP server 定义与 :LspInfo 命令
     {
         "neovim/nvim-lspconfig",
         event = { "BufReadPre", "BufNewFile" },
     },
 
-    -- Mason UI
+    -- mason.nvim：LSP/工具的安装与管理 UI
     {
         "williamboman/mason.nvim",
         cmd = "Mason",
         opts = {},
     },
 
-    -- Mason <-> LSP bridge
+    -- mason-lspconfig.nvim：Mason 与 LSP 配置桥接
     {
         "williamboman/mason-lspconfig.nvim",
         event = { "BufReadPre", "BufNewFile" },
         dependencies = {
+            -- mason.nvim：LSP/工具管理
             "williamboman/mason.nvim",
+            -- nvim-lspconfig：LSP server 定义
             "neovim/nvim-lspconfig",
+            -- cmp-nvim-lsp：补全能力扩展
             "hrsh7th/cmp-nvim-lsp",
         },
         opts = {
@@ -31,14 +34,17 @@ return {
             automatic_installation = true,
         },
         config = function(_, opts)
+            -- Mason 负责安装与管理 LSP，可自动补齐缺失服务。
             require("mason-lspconfig").setup(opts)
 
+            -- 从 nvim-cmp 获取 LSP capabilities，保证补全能力一致。
             local caps = require("cmp_nvim_lsp").default_capabilities()
 
             local function on_attach(_, bufnr)
                 local map = vim.keymap.set
                 local o = { noremap = true, silent = true, buffer = bufnr }
 
+<<<<<<< HEAD
                 -- 光标停留时自动弹出诊断浮窗
                 local diag_group = vim.api.nvim_create_augroup("LspDiagnosticsOnHover", { clear = false })
                 vim.api.nvim_clear_autocmds({ group = diag_group, buffer = bufnr })
@@ -51,6 +57,9 @@ return {
                 })
 
                 -- 跳转/查看
+=======
+                -- 跳转/查看：仅在 LSP attach 后生效。
+>>>>>>> 258c1ec0e1d33d0ed380eaf42b775c59cbaac4ff
                 map("n", "gd", vim.lsp.buf.definition, o)
                 map("n", "gD", vim.lsp.buf.declaration, o)
                 map("n", "gi", vim.lsp.buf.implementation, o)
@@ -73,7 +82,7 @@ return {
                 end, o)
             end
 
-            -- lua_ls
+            -- lua_ls：Lua 语言服务
             vim.lsp.config("lua_ls", {
                 capabilities = caps,
                 on_attach = on_attach,
@@ -86,7 +95,7 @@ return {
                 },
             })
 
-            -- pylsp
+            -- pylsp：Python 语言服务
             vim.lsp.config("pylsp", {
                 capabilities = caps,
                 on_attach = on_attach,
@@ -95,20 +104,20 @@ return {
                 },
             })
 
-            -- rust-analyzer
+            -- rust-analyzer：Rust 语言服务
             vim.lsp.config("rust_analyzer", {
                 capabilities = caps,
                 on_attach = on_attach,
                 settings = { ["rust-analyzer"] = {} },
             })
 
-            -- ts_ls
+            -- ts_ls：TypeScript/JavaScript 语言服务
             vim.lsp.config("ts_ls", {
                 capabilities = caps,
                 on_attach = on_attach,
             })
 
-            -- 启用
+            -- 统一启用上面已配置的 LSP 服务。
             vim.lsp.enable({ "lua_ls", "pylsp", "rust_analyzer", "ts_ls" })
         end,
     },

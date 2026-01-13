@@ -9,6 +9,7 @@
 -- =========================================================
 
 return {
+    -- nvim-treesitter：语法高亮/折叠/结构解析
     {
         "nvim-treesitter/nvim-treesitter",
         lazy = false,
@@ -17,6 +18,7 @@ return {
             local ts = require("nvim-treesitter")
 
             -- 1) 安装目录 + 加入 runtimepath（非常关键）
+            -- 使用统一安装目录，避免 parser 分散。
             local install_dir = vim.fn.stdpath("data") .. "/site"
             vim.opt.rtp:prepend(install_dir)
             ts.setup({ install_dir = install_dir })
@@ -27,8 +29,10 @@ return {
             vim.opt.foldlevelstart = 99
 
             -- 3) 可选：是否自动后台安装缺失 parser（默认关：最稳）
+            -- 是否在后台自动安装缺失的 parser，避免阻塞编辑。
             local AUTO_INSTALL = true
 
+            -- 仅在缺失时尝试后台安装 parser，不阻塞编辑。
             local function ensure_parser_async(lang)
                 if not AUTO_INSTALL then return end
                 -- 如果语言 parser 不存在，就后台装一下（不 wait，不阻塞）

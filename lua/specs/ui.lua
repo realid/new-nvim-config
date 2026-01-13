@@ -3,25 +3,34 @@
 -- =========================================================
 
 return {
-    -- 主题（必须最早，避免闪屏）
+    -- 主题（必须最早加载，避免闪屏）
     {
         "morhetz/gruvbox",
         lazy = false,
         priority = 1000,
         config = function()
+            -- 固定深色背景，避免自动切换带来不一致。
             vim.opt.background = "dark"
             pcall(vim.cmd, "colorscheme gruvbox")
         end,
     },
 
+    -- nvim-web-devicons：文件类型图标支持
     { "nvim-tree/nvim-web-devicons", lazy = true },
 
-    -- lualine
+    -- mini.icons：轻量图标支持
+    { "echasnovski/mini.icons", version = false, event = "VeryLazy", opts = {} },
+
+    -- lualine：状态栏配置
     {
         "nvim-lualine/lualine.nvim",
         event = "VeryLazy",
-        dependencies = { "nvim-tree/nvim-web-devicons" },
+        dependencies = {
+            -- nvim-web-devicons：状态栏图标支持
+            "nvim-tree/nvim-web-devicons",
+        },
         config = function()
+            -- 仅展示当前缓冲区关联的 LSP 客户端名称。
             local function lsp_name()
                 local clients = vim.lsp.get_clients({ bufnr = 0 })
                 if not clients or #clients == 0 then
@@ -39,7 +48,7 @@ return {
                 return "LSP:" .. table.concat(names, ",")
             end
 
-            -- Codex 状态：Codex 没加载时返回空，不会在右下角出现 “table:xxxx”
+            -- Codex 状态：未加载时返回空，避免出现 “table:xxxx”。
             local function codex_status()
                 local ok, codex = pcall(require, "codex")
                 if not ok then
@@ -88,11 +97,14 @@ return {
         end,
     },
 
-    -- bufferline
+    -- bufferline：buffer 标签栏
     {
         "akinsho/bufferline.nvim",
         event = "VeryLazy",
-        dependencies = { "nvim-tree/nvim-web-devicons" },
+        dependencies = {
+            -- nvim-web-devicons：buffer 标签图标支持
+            "nvim-tree/nvim-web-devicons",
+        },
         keys = {
             { "<C-n>", "<cmd>BufferLineCycleNext<CR>", desc = "Next buffer" },
             { "<C-p>", "<cmd>BufferLineCyclePrev<CR>", desc = "Prev buffer" },
@@ -116,7 +128,7 @@ return {
         },
     },
 
-    -- indent-blankline（ibl）
+    -- indent-blankline（ibl）：缩进可视化
     {
         "lukas-reineke/indent-blankline.nvim",
         event = "VeryLazy",
@@ -141,5 +153,18 @@ return {
                 },
             })
         end,
+    },
+
+    -- Outline：提供符号大纲侧边栏，便于浏览与跳转结构。
+    {
+        "hedyhli/outline.nvim",
+        cmd = { "Outline", "OutlineOpen", "OutlineClose" },
+        keys = {
+            { "<leader>so", "<cmd>Outline<CR>", desc = "Outline: Toggle (Right)" },
+        },
+        opts = {
+            position = "right",
+            width = 35,
+        },
     },
 }

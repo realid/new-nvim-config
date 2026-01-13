@@ -17,12 +17,13 @@
 -- :contentReference[oaicite:0]{index=0}
 -- =========================================================
 
+-- 判断外部 formatter/linter 是否可执行，用于动态选择工具。
 local function has(cmd)
     return vim.fn.executable(cmd) == 1
 end
 
--- 只把“行首缩进区域”的 Tab 展开成空格（不动正文里的 tab）
-local function expand_indent_tabs_to_spaces(bufnr)
+    -- 只把“行首缩进区域”的 Tab 展开成空格（不动正文里的 Tab 字符）
+    local function expand_indent_tabs_to_spaces(bufnr)
     bufnr = bufnr or 0
 
     -- 尊重 buffer 自己的设置：如果这个 buffer 就是 noexpandtab（例如 make），直接跳过
@@ -77,6 +78,7 @@ return {
     -- =========================================================
     -- conform：格式化
     -- =========================================================
+    -- conform.nvim：格式化调度与配置
     {
         "stevearc/conform.nvim",
         event = { "BufReadPre", "BufNewFile" },
@@ -109,10 +111,10 @@ return {
         },
 
         opts = {
-            notify_on_error = false,
-            notify_no_formatters = false,
+            notify_on_error = false, -- 避免弹窗干扰
+            notify_no_formatters = false, -- 无 formatter 时保持安静
 
-            -- 按“命令是否存在”动态选择 formatter
+            -- 按“命令是否存在”动态选择 formatter，避免 ENOENT。
             formatters_by_ft = {
                 lua = function()
                     return has("stylua") and { "stylua" } or {}
@@ -174,7 +176,7 @@ return {
                         return
                     end
 
-                    -- 先格式化（同步，避免保存后才改动）
+                    -- 先同步格式化，避免保存后再修改导致文件变更。
                     local ok, conform = pcall(require, "conform")
                     if ok then
                         -- quiet=true：没有 formatter 的时候别吵；lsp_format=fallback：没 formatter 就用 LSP
@@ -190,7 +192,7 @@ return {
                         pcall(vim.lsp.buf.format, { bufnr = bufnr, async = false })
                     end
 
-                    -- 再把“缩进区 Tab”清成空格（最终落盘不会留下缩进 Tab）
+                    -- 再把“缩进区 Tab”清成空格（保证落盘无缩进 Tab）。
                     expand_indent_tabs_to_spaces(bufnr)
                 end,
             })
@@ -200,6 +202,7 @@ return {
     -- =========================================================
     -- nvim-lint：lint（外部命令不存在就不启用）
     -- =========================================================
+    -- nvim-lint：按文件类型触发外部 lint
     {
         "mfussenegger/nvim-lint",
         event = { "BufReadPost", "BufNewFile" },
@@ -220,7 +223,7 @@ return {
         config = function()
             local lint = require("lint")
 
-            -- 直接重置，避免残留旧配置导致 ENOENT
+            -- 直接重置，避免残留旧配置导致 ENOENT。
             lint.linters_by_ft = {}
 
             local by_ft = {}
@@ -243,6 +246,7 @@ return {
 
             lint.linters_by_ft = by_ft
 
+            -- 自动 lint：进入、保存、退出插入后触发。
             local grp = vim.api.nvim_create_augroup("LintOnEvents", { clear = true })
             vim.api.nvim_create_autocmd({ "BufEnter", "BufWritePost", "InsertLeave" }, {
                 group = grp,
