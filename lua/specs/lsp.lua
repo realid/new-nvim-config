@@ -39,6 +39,17 @@ return {
                 local map = vim.keymap.set
                 local o = { noremap = true, silent = true, buffer = bufnr }
 
+                -- 光标停留时自动弹出诊断浮窗
+                local diag_group = vim.api.nvim_create_augroup("LspDiagnosticsOnHover", { clear = false })
+                vim.api.nvim_clear_autocmds({ group = diag_group, buffer = bufnr })
+                vim.api.nvim_create_autocmd("CursorHold", {
+                    group = diag_group,
+                    buffer = bufnr,
+                    callback = function()
+                        vim.diagnostic.open_float(nil, { focus = false, scope = "cursor" })
+                    end,
+                })
+
                 -- 跳转/查看
                 map("n", "gd", vim.lsp.buf.definition, o)
                 map("n", "gD", vim.lsp.buf.declaration, o)
