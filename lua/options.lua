@@ -83,34 +83,130 @@ vim.keymap.set("n", "<leader>?", function()
 	vim.cmd("edit " .. path)
 end, { desc = "Open README" })
 
--- 只对 loclist 生效：回车跳转后自动关闭 loclist 窗口。
+-- 只对 loclist 生效：回车跳转（不自动关闭 loclist 窗口）。
 vim.api.nvim_create_autocmd("FileType", {
 	pattern = "qf",
 	callback = function()
 		local winid = vim.api.nvim_get_current_win()
 		local info = vim.fn.getwininfo(winid)[1]
-		if not info or info.loclist ~= 1 then
-			return
-		end
-		vim.keymap.set("n", "<CR>", function()
-			vim.cmd("ll")
-			vim.cmd("lclose")
-		end, { buffer = true, silent = true, nowait = true })
+	if not info or info.loclist ~= 1 then
+		return
+	end
 
-		vim.api.nvim_create_autocmd("CursorMoved", {
-			buffer = 0,
-			callback = function()
-				local line = vim.fn.line(".")
-				if vim.b.loclist_last_line == line then
-					return
+	local function close_loclist_preview()
+		local ok, winid = pcall(vim.api.nvim_buf_get_var, 0, "loclist_preview_winid")
+		if ok and winid and vim.api.nvim_win_is_valid(winid) then
+			pcall(vim.api.nvim_win_close, winid, true)
+			pcall(vim.api.nvim_buf_set_var, 0, "loclist_preview_winid", nil)
+		end
+	end
+
+	vim.keymap.set("n", "<CR>", function()
+		local line = vim.fn.line(".")
+		vim.cmd("ll " .. line)
+		close_loclist_preview()
+		pcall(vim.cmd, "lclose")
+	end, { buffer = true, silent = true, nowait = true })
+
+	-- 不做 CursorMoved 预览，避免在 loclist 里移动时自动跳回源窗口。
+	vim.api.nvim_create_autocmd("CursorMoved", {
+		buffer = 0,
+		callback = function()
+			local line = vim.fn.line(".")
+			if vim.b.loclist_last_line == line then
+				return
+			end
+			vim.b.loclist_last_line = line
+
+			local info = vim.fn.getloclist(0, { items = 1 })
+			local items = info.items or {}
+			local item = items[line]
+			if not item then
+				return
+			end
+			local bufnr = item.bufnr or 0
+			local fname = item.filename
+			if (fname == nil or fname == "") and bufnr > 0 then
+				fname = vim.api.nvim_buf_get_name(bufnr)
+			end
+			if fname == nil or fname == "" then
+				return
+			end
+
+			if item.user_data and item.user_data.uri then
+				fname = vim.uri_to_fname(item.user_data.uri)
+			end
+
+			local function get_preview_winid()
+				local winid = tonumber(vim.b.loclist_preview_winid)
+				if winid and vim.api.nvim_win_is_valid(winid) then
+					return winid
 				end
-				vim.b.loclist_last_line = line
-				local loclist_win = vim.api.nvim_get_current_win()
-				vim.cmd("silent! keepjumps ll")
-				if vim.api.nvim_win_is_valid(loclist_win) then
-					vim.api.nvim_set_current_win(loclist_win)
+				return nil
+			end
+
+			local function create_float_preview(bufnr)
+				local width = math.max(20, math.floor(vim.o.columns * 0.6))
+				local height = math.max(4, math.floor(vim.o.lines * 0.3))
+				local row = math.max(1, vim.o.lines - height - 3)
+				local col = math.max(2, math.floor((vim.o.columns - width) / 2))
+				local winid = vim.api.nvim_open_win(bufnr, false, {
+					relative = "editor",
+					row = row,
+					col = col,
+					width = width,
+					height = height,
+					border = "rounded",
+					style = "minimal",
+				})
+				vim.api.nvim_win_set_option(winid, "wrap", false)
+				return winid
+			end
+
+			local preview_winid = get_preview_winid()
+
+			if preview_winid ~= nil and vim.api.nvim_win_is_valid(preview_winid) then
+				local bufnr = item.bufnr or 0
+				if bufnr <= 0 then
+					bufnr = vim.fn.bufnr(fname, true)
 				end
-			end,
-		})
+				if bufnr and bufnr > 0 then
+					pcall(vim.fn.bufload, bufnr)
+					pcall(vim.api.nvim_win_set_buf, preview_winid, bufnr)
+					local lnum = item.lnum or 1
+					local col = math.max((item.col or 1) - 1, 0)
+					pcall(vim.api.nvim_win_set_cursor, preview_winid, { lnum, col })
+				end
+				pcall(vim.api.nvim_buf_set_var, 0, "loclist_preview_winid", preview_winid)
+			else
+				local bufnr = item.bufnr or 0
+				if bufnr <= 0 then
+					bufnr = vim.fn.bufnr(fname, true)
+				end
+				if bufnr and bufnr > 0 then
+					pcall(vim.fn.bufload, bufnr)
+					preview_winid = create_float_preview(bufnr)
+					local lnum = item.lnum or 1
+					local col = math.max((item.col or 1) - 1, 0)
+					pcall(vim.api.nvim_win_set_cursor, preview_winid, { lnum, col })
+					pcall(vim.api.nvim_buf_set_var, 0, "loclist_preview_winid", preview_winid)
+				end
+			end
+		end,
+	})
+
+	vim.api.nvim_create_autocmd("BufLeave", {
+		buffer = 0,
+		callback = function()
+			close_loclist_preview()
+		end,
+	})
+
+	vim.api.nvim_create_autocmd("WinClosed", {
+		buffer = 0,
+		callback = function()
+			close_loclist_preview()
+		end,
+	})
 	end,
 })
