@@ -93,8 +93,24 @@ vim.api.nvim_create_autocmd("FileType", {
 			return
 		end
 		vim.keymap.set("n", "<CR>", function()
-			vim.cmd("normal! <CR>")
+			vim.cmd("ll")
 			vim.cmd("lclose")
 		end, { buffer = true, silent = true, nowait = true })
+
+		vim.api.nvim_create_autocmd("CursorMoved", {
+			buffer = 0,
+			callback = function()
+				local line = vim.fn.line(".")
+				if vim.b.loclist_last_line == line then
+					return
+				end
+				vim.b.loclist_last_line = line
+				local loclist_win = vim.api.nvim_get_current_win()
+				vim.cmd("silent! keepjumps ll")
+				if vim.api.nvim_win_is_valid(loclist_win) then
+					vim.api.nvim_set_current_win(loclist_win)
+				end
+			end,
+		})
 	end,
 })
