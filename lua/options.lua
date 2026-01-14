@@ -50,9 +50,9 @@ vim.opt.expandtab = true
 -- 默认不显示不可见字符，需要时手动切换。
 vim.opt.list = false
 vim.opt.listchars = {
-    tab = "»·",
-    trail = "·",
-    nbsp = "␣",
+	tab = "»·",
+	trail = "·",
+	nbsp = "␣",
 }
 
 -- ---------- 搜索 ----------
@@ -73,12 +73,28 @@ vim.opt.foldcolumn = "0"
 -- 一个小工具键：切换 list 显示
 -- 快捷切换 listchars，便于临时排查缩进/空白问题。
 vim.keymap.set("n", "<leader>ul", function()
-    vim.opt.list = not vim.opt.list:get()
-    vim.notify("list=" .. tostring(vim.opt.list:get()))
+	vim.opt.list = not vim.opt.list:get()
+	vim.notify("list=" .. tostring(vim.opt.list:get()))
 end, { desc = "Toggle listchars" })
 
 -- 快速打开本配置的 README 帮助
 vim.keymap.set("n", "<leader>?", function()
-    local path = vim.fn.stdpath("config") .. "/README.md"
-    vim.cmd("edit " .. path)
+	local path = vim.fn.stdpath("config") .. "/README.md"
+	vim.cmd("edit " .. path)
 end, { desc = "Open README" })
+
+-- 只对 loclist 生效：回车跳转后自动关闭 loclist 窗口。
+vim.api.nvim_create_autocmd("FileType", {
+	pattern = "qf",
+	callback = function()
+		local winid = vim.api.nvim_get_current_win()
+		local info = vim.fn.getwininfo(winid)[1]
+		if not info or info.loclist ~= 1 then
+			return
+		end
+		vim.keymap.set("n", "<CR>", function()
+			vim.cmd("normal! <CR>")
+			vim.cmd("lclose")
+		end, { buffer = true, silent = true, nowait = true })
+	end,
+})
