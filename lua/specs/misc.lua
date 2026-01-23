@@ -32,4 +32,29 @@ return {
 			vim.g.graphviz_output_format = "png"
 		end,
 	},
+
+	{
+		-- plantuml-syntax：PlantUML 语法高亮
+		"aklt/plantuml-syntax",
+		ft = { "plantuml", "puml" },
+		init = function()
+			-- 让常见扩展名识别为 plantuml。
+			vim.filetype.add({
+				extension = {
+					puml = "plantuml",
+					plantuml = "plantuml",
+					uml = "plantuml",
+				},
+			})
+		end,
+	},
+
+	{
+		-- plantuml-previewer.vim：提供 PlantUML 生成/预览命令
+		"weirongxu/plantuml-previewer.vim",
+		ft = { "plantuml", "puml" },
+		dependencies = {
+			"tyru/open-browser.vim",
+		},
+	},
 }
